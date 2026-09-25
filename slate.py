@@ -1,11 +1,10 @@
-#bug found! When check mark and delete reminder, it gives error when u delete link
-
 #import
 import streamlit as st
+import pandas as pd
 
-#checks + variables
+#checks
 if "reminders" not in st.session_state:
-    st.session_state["reminders"] = [] #starts as an empty list
+    st.session_state["reminders"] = []
 
 if "links" not in st.session_state:
     st.session_state["links"] = []
@@ -13,6 +12,12 @@ if "links" not in st.session_state:
 if "courses" not in st.session_state:
     st.session_state["courses"] = []
 
+if "tasks" not in st.session_state:
+    st.session_state["tasks"] = pd.DataFrame(columns=["title", "course", "status", "due"])
+
+if "schedule" not in st.session_state:
+    st.session_state["schedule"] = pd.DataFrame(columns=["time", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
+    
 #-----FUNCTIONS------
 def add_reminder():
     #first check if the text is not empty:
@@ -96,7 +101,7 @@ with st.sidebar:
             st.write(reminder["text"])
 
         with col3:
-            if st.button("🗑️", key=f"delete_{i}"):
+            if st.button("🗑️", key=f"delete_reminder_{i}"):
                 st.session_state["reminders"].pop(i)
                 st.rerun()
 
@@ -111,13 +116,13 @@ with st.sidebar:
             st.write(links)
 
         with col2:
-            if st.button("🗑️", key=f"delete_{i}"):
+            if st.button("🗑️", key=f"delete_link_{i}"):
                         st.session_state["links"].pop(i)
                         st.rerun()
 
 #-----COURSE SECTION-----
-with st.popover("➕ Add Session"):
-    with st.form("session_form", clear_on_submit=True):
+with st.popover("➕ Add Course"):
+    with st.form("course_form", clear_on_submit=True):
         course_name = st.text_input("Course name:")
         course_type = st.text_input("Type:")
         days = st.multiselect("Days:", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
@@ -129,7 +134,7 @@ with st.popover("➕ Add Session"):
         instructor_name = st.text_input("Instructor:")
         instructor_email = st.text_input("Contact email:")
 
-        submitted = st.form_submit_button("Add Session")
+        submitted = st.form_submit_button("Add Course")
 
         if submitted:
             new_detail = {
@@ -150,3 +155,45 @@ with st.popover("➕ Add Session"):
 for i, course in enumerate(st.session_state["courses"]):
     if st.button(course["course_name"], key=f"course_{i}"):
         show_course(course)
+
+#-----TASKS-----
+st.subheader("Tasks")
+
+course_names = [course["course_name"] for course in st.session_state["courses"]]
+
+edited_tasks = st.data_editor(
+    st.session_state["tasks"],
+    column_config={
+        "title": st.column_config.TextColumn("Title"),
+        "course": st.column_config.SelectboxColumn("Course", options=course_names),
+        "status": st.column_config.SelectboxColumn("Status", options=["Not Started", "In Progress", "Done", "Late"]),
+        "due": st.column_config.DateColumn("Due Date")
+    },
+    num_rows="dynamic",
+    use_container_width=True
+)
+st.session_state["tasks"] = edited_tasks
+
+#----SCHEDULE----
+st.subheader("Course Schedule")
+
+course_names = [course["course_name"] for course in st.session_state["courses"]]
+st.session_state["schedule"] = st.session_state["schedule"].reset_index(drop=True)
+
+edited_schedule = st.data_editor(
+    st.session_state["schedule"],
+    column_config={
+        "time": st.column_config.TextColumn("Time"),
+        "Monday": st.column_config.SelectboxColumn("Mon", options=course_names),
+        "Tuesday": st.column_config.SelectboxColumn("Tue", options=course_names),
+        "Wednesday": st.column_config.SelectboxColumn("Wed", options=course_names),
+        "Thursday": st.column_config.SelectboxColumn("Thu", options=course_names),
+        "Friday": st.column_config.SelectboxColumn("Fri", options=course_names),
+        "Saturday": st.column_config.SelectboxColumn("Sat", options=course_names),
+        "Sunday": st.column_config.SelectboxColumn("Sun", options=course_names)
+    },
+    num_rows="dynamic",
+    use_container_width=True,
+    hide_index=True
+)
+st.session_state["schedule"] = edited_schedule
