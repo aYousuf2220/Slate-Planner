@@ -1,28 +1,61 @@
+#make links shorter! and add a customizeable name to it as well
+#course details -> make name of course bigger than the type
+#when adding time to schedule, add it through clock?
+#add a delete button for courses
+
 #import
 import streamlit as st
 import pandas as pd
+from streamlit_calendar import calendar
+import json
+
+st.set_page_config(layout="wide") #add page_icon = whatever icon
 
 #checks
 if "reminders" not in st.session_state:
-    st.session_state["reminders"] = []
+    try:
+        with open("reminders.json", "r") as f:
+            st.session_state["reminders"] = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        st.session_state["reminders"] = []
 
 if "links" not in st.session_state:
-    st.session_state["links"] = []
+    try:
+        with open("links.json", "r") as f:
+            st.session_state["links"] = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        st.session_state["links"] = []
 
 if "courses" not in st.session_state:
-    st.session_state["courses"] = []
+    try:
+        with open("courses.json", "r") as f:
+            st.session_state["courses"] = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        st.session_state["courses"] = []
 
 if "tasks" not in st.session_state:
-    st.session_state["tasks"] = pd.DataFrame(columns=["title", "course", "status", "due"])
+    try:
+        st.session_state["tasks"] = pd.read_csv("tasks.csv", parse_dates=["due"])
+    except (FileNotFoundError, pd.errors.EmptyDataError):
+        st.session_state["tasks"] = pd.DataFrame({
+        "title": pd.Series(dtype="str"),
+        "course": pd.Series(dtype="str"),
+        "status": pd.Series(dtype="str"),
+        "due": pd.Series(dtype="datetime64[ns]")
+    })
 
 if "schedule" not in st.session_state:
-    st.session_state["schedule"] = pd.DataFrame(columns=["time", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
-    
+    try:
+        st.session_state["schedule"] = pd.read_csv("schedule.csv")
+    except (FileNotFoundError, pd.errors.EmptyDataError):
+        st.session_state["schedule"] = pd.DataFrame(columns=["time", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
+
 #-----FUNCTIONS------
 def add_reminder():
     #first check if the text is not empty:
     if st.session_state["reminder_input"] != "":
         st.session_state["reminders"].append({"text": st.session_state["reminder_input"], "done": False}) #append the text to the list
+        save_json(st.session_state["reminders"], "reminders.json")
 
     #setting the box to blank again
     st.session_state["reminder_input"] = ""
@@ -31,6 +64,7 @@ def add_links():
     #first check if the text is not empty:
     if st.session_state["link_input"] != "":
         st.session_state["links"].append(st.session_state["link_input"])
+        save_json(st.session_state["links"], "links.json")
 
     #setting the box to blank again
     st.session_state["link_input"] = ""
@@ -43,6 +77,7 @@ def show_course(course):
             save_name = st.form_submit_button("Save")
             if save_name:
                 course["course_name"] = new_name
+                save_json(st.session_state["courses"], "courses.json")
                 st.rerun()
 
     st.write(course["course_name"])
@@ -78,9 +113,14 @@ def show_course(course):
                     detail["section"] = edit_section
                     detail["instructor_name"] = edit_instructor
                     detail["instructor_email"] = edit_email
+                    save_json(st.session_state["courses"], "courses.json")
                     st.rerun()
 
         st.divider()
+
+def save_json(data, filename):
+    with open(filename, "w") as f:
+        json.dump(data, f)
 
 #-----UI-----
 st.title("slate")
@@ -96,13 +136,14 @@ with st.sidebar:
         with col1:
             checked = st.checkbox("", value=reminder["done"], key=f"done_{i}")
             st.session_state["reminders"][i]["done"] = checked
-
+            save_json(st.session_state["reminders"], "reminders.json")
         with col2:
             st.write(reminder["text"])
 
         with col3:
             if st.button("🗑️", key=f"delete_reminder_{i}"):
                 st.session_state["reminders"].pop(i)
+                save_json(st.session_state["reminders"], "reminders.json")
                 st.rerun()
 
     #-----QUICKLINKS-----
@@ -118,6 +159,7 @@ with st.sidebar:
         with col2:
             if st.button("🗑️", key=f"delete_link_{i}"):
                         st.session_state["links"].pop(i)
+                        save_json(st.session_state["links"], "links.json")
                         st.rerun()
 
 #-----COURSE SECTION-----
@@ -152,6 +194,7 @@ with st.popover("➕ Add Course"):
             if not found:
                 st.session_state["courses"].append({"course_name": course_name, "course_details": [new_detail]})
 
+            save_json(st.session_state["courses"], "courses.json")
 for i, course in enumerate(st.session_state["courses"]):
     if st.button(course["course_name"], key=f"course_{i}"):
         show_course(course)
@@ -160,40 +203,71 @@ for i, course in enumerate(st.session_state["courses"]):
 st.subheader("Tasks")
 
 course_names = [course["course_name"] for course in st.session_state["courses"]]
+st.session_state["tasks"] = st.session_state["tasks"].reset_index(drop=True)
 
-edited_tasks = st.data_editor(
-    st.session_state["tasks"],
-    column_config={
-        "title": st.column_config.TextColumn("Title"),
-        "course": st.column_config.SelectboxColumn("Course", options=course_names),
-        "status": st.column_config.SelectboxColumn("Status", options=["Not Started", "In Progress", "Done", "Late"]),
-        "due": st.column_config.DateColumn("Due Date")
-    },
-    num_rows="dynamic",
-    use_container_width=True
-)
-st.session_state["tasks"] = edited_tasks
+with st.form("tasks_form"):
+    edited_tasks = st.data_editor(
+        st.session_state["tasks"],
+        column_config={
+            "title": st.column_config.TextColumn("Title"),
+            "course": st.column_config.SelectboxColumn("Course", options=course_names),
+            "status": st.column_config.SelectboxColumn("Status", options=["Not Started", "In Progress", "Done", "Late"]),
+            "due": st.column_config.DateColumn("Due Date")
+        },
+        num_rows="dynamic",
+        hide_index=True,
+        width="stretch",
+        key="tasks_editor"
+    )
+    save_tasks = st.form_submit_button("Save Tasks")
+
+if save_tasks:
+    edited_tasks["due"] = pd.to_datetime(edited_tasks["due"], errors="coerce")
+    st.session_state["tasks"] = edited_tasks.reset_index(drop=True)
+    st.session_state["tasks"].to_csv("tasks.csv", index=False)
 
 #----SCHEDULE----
 st.subheader("Course Schedule")
 
 course_names = [course["course_name"] for course in st.session_state["courses"]]
 st.session_state["schedule"] = st.session_state["schedule"].reset_index(drop=True)
+with st.form("schedule_form"):
+    edited_schedule = st.data_editor(
+        st.session_state["schedule"],
+        column_config={
+            "time": st.column_config.TextColumn("Time"),
+            "Monday": st.column_config.SelectboxColumn("Mon", options=course_names),
+            "Tuesday": st.column_config.SelectboxColumn("Tue", options=course_names),
+            "Wednesday": st.column_config.SelectboxColumn("Wed", options=course_names),
+            "Thursday": st.column_config.SelectboxColumn("Thu", options=course_names),
+            "Friday": st.column_config.SelectboxColumn("Fri", options=course_names),
+            "Saturday": st.column_config.SelectboxColumn("Sat", options=course_names),
+            "Sunday": st.column_config.SelectboxColumn("Sun", options=course_names)
+        },
+        num_rows="dynamic",
+        width="stretch",
+        hide_index=True
+    )
+    save_schedule = st.form_submit_button("Save Schedule")
 
-edited_schedule = st.data_editor(
-    st.session_state["schedule"],
-    column_config={
-        "time": st.column_config.TextColumn("Time"),
-        "Monday": st.column_config.SelectboxColumn("Mon", options=course_names),
-        "Tuesday": st.column_config.SelectboxColumn("Tue", options=course_names),
-        "Wednesday": st.column_config.SelectboxColumn("Wed", options=course_names),
-        "Thursday": st.column_config.SelectboxColumn("Thu", options=course_names),
-        "Friday": st.column_config.SelectboxColumn("Fri", options=course_names),
-        "Saturday": st.column_config.SelectboxColumn("Sat", options=course_names),
-        "Sunday": st.column_config.SelectboxColumn("Sun", options=course_names)
-    },
-    num_rows="dynamic",
-    use_container_width=True,
-    hide_index=True
-)
-st.session_state["schedule"] = edited_schedule
+if save_schedule:
+    st.session_state["schedule"] = edited_schedule.reset_index(drop=True)
+    st.session_state["schedule"].to_csv("schedule.csv", index=False)
+
+#-----CALENDAR-----
+daysOfWeek = {"Sunday": 0, "Monday": 1, "Tuesday": 2, "Wednesday": 3, "Thursday": 4, "Friday": 5, "Saturday": 6}
+calendar_events = []
+
+for _, task in st.session_state["tasks"].iterrows(): #gives row number and row contents; _ is "ignore this"
+    if pd.notna(task["title"]) and pd.notna(task["due"]):
+       calendar_events.append({"title": task["title"], "start": str(task["due"])})
+
+
+for _, row in st.session_state["schedule"].iterrows():
+    for day_name, day_num in daysOfWeek.items(): #.items gets the halves of the dictionaries' pairs at once
+        if pd.notna(row[day_name]):
+            calendar_events.append({"title": f"{row[day_name]} ({row['time']})", "daysOfWeek": [day_num]})
+
+calendar(events=calendar_events, options={"initialView": "dayGridMonth", "firstDay": 1}, key="calendar")
+
+#AI Agent
